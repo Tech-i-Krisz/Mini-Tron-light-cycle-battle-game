@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Tron: Light Cycle Battle</title>
+    <style>
+        body {
+            background-color: #000;
+            color: #0ff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        canvas {
+            border: 3px solid #222;
+            box-shadow: 0 0 30px rgba(0, 250, 255, 0.2);
+            background: radial-gradient(circle, #0a0a0a 0%, #000 100%);
+        }
+        .ui { margin-top: 15px; text-align: center; text-transform: uppercase; letter-spacing: 2px; }
+        .controls { color: #555; font-size: 0.8rem; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+    <div class="ui" id="status">INCOMING DATA STREAM...</div>
+    <canvas id="tron" width="700" height="700"></canvas>
+    <div class="controls">ARROWS TO NAVIGATE | SPACE TO REBOOT</div>
+
+    <script>
+        const canvas = document.getElementById('tron');
+        const ctx = canvas.getContext('2d');
+        const status = document.getElementById('status');
+
+        const SIZE = 700;
+        const GRID_SIZE = 14; // Larger grid for better model detail
+        const CELLS = SIZE / GRID_SIZE;
+
+        const PLAYER_COLOR = '#00faff';
+        const ENEMY_COLOR = '#ff4d00';
+
+        let grid = [];
+        let gameOver = false;
+
+        class Cycle {
+            constructor(x, y, dx, dy, color, isAI) {
+                this.x = x;
+                this.y = y;
+                this.dx = dx;
+                this.dy = dy;
+                this.color = color;
+                this.isAI = isAI;
+            }
+
+            update() {
+                grid[this.x][this.y] = this.color;
+                this.x += this.dx;
+                this.y += this.dy;
+
+                if (this.x < 0 || this.x >= CELLS || this.y < 0 || this.y >= CELLS) return true;
+                if (grid[this.x][this.y] !== null) return true;
+                return false;
+            }
+
+            draw() {
+                const screenX = this.x * GRID_SIZE + GRID_SIZE / 2;
+                const screenY = this.y * GRID_SIZE + GRID_SIZE / 2;
+                
+                // Calculate angle based on direction
+                let angle = 0;
+                if (this.dx === 1) angle = 0;
+                if (this.dx === -1) angle = Math.PI;
+                if (this.dy === 1) angle = Math.PI / 2;
+                if (this.dy === -1) angle = -Math.PI / 2;
+
+                ctx.save();
+                ctx.translate(screenX, screenY);
+                ctx.rotate(angle);
+
+                // --- Draw Cycle Model ---
+                
+                // Glow effect
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+
+                // Main Chassis
+                ctx.fillStyle = "#222";
+                ctx.beginPath();
+                ctx.roundRect(-GRID_SIZE/2, -GRID_SIZE/3, GRID_SIZE, (GRID_SIZE/3)*2, 5);
+                ctx.fill();
+
+                // Neon Side Stripes
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 2;
+                ctx.strokeRect(-GRID_SIZE/2 + 2, -GRID_SIZE/3, GRID_SIZE - 4, (GRID_SIZE/3)*2);
+
+                // Cockpit
+                ctx.fillStyle = "rgba(255,255,255,0.8)";
+                ctx.beginPath();
+                ctx.ellipse(2, 0, 4, 2, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Engine Glow (Back)
+                ctx.fillStyle = this.color;
+                ctx.fillRect(-GRID_SIZE/2, -2, 3, 4);
+
+                ctx.restore();
+            }
+        }
+
+        let player = new Cycle(5, Math.floor(CELLS / 2), 1, 0, PLAYER_COLOR, false);
+        let enemy = new Cycle(CELLS - 6, Math.floor(CELLS / 2), -1, 0, ENEMY_COLOR, true);
+
+        function initGrid() {
+            grid = Array(CELLS).fill().map(() => Array(CELLS).fill(null));
+        }
+
+        function drawWorld() {
+            // Draw faint grid lines
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = "#111";
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= SIZE; i += GRID_SIZE) {
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, SIZE); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(SIZE, i); ctx.stroke();
+            }
+
+            // Draw trails
+            for (let x = 0; x < CELLS; x++) {
+                for (let y = 0; y < CELLS; y++) {
+                    if (grid[x][y]) {
+                        ctx.fillStyle = grid[x][y];
+                        ctx.shadowBlur = 8;
+                        ctx.shadowColor = grid[x][y];
+                        ctx.fillRect(x * GRID_SIZE + 2, y * GRID_SIZE + 2, GRID_SIZE - 4, GRID_SIZE - 4);
+                    }
+                }
+            }
+        }
+
+        function updateAI() {
+            const possibleMoves = [{dx: 0, dy: -1}, {dx: 0, dy: 1}, {dx: -1, dy: 0}, {dx: 1, dy: 0}];
+            
+            let safeMoves = possibleMoves.filter(m => {
+                if (m.dx === -enemy.dx && m.dy === -enemy.dy) return false;
+                let nx = enemy.x + m.dx, ny = enemy.y + m.dy;
+                return nx >= 0 && nx < CELLS && ny >= 0 && ny < CELLS && grid[nx][ny] === null;
+            });
+
+            if (safeMoves.length > 0) {
+                // Trickster Logic: 
+                // 1. Sort by moves that box the player in (getting close but maintaining distance)
+                // 2. Occasionally take a flanking path
+                safeMoves.sort((a, b) => {
+                    let distA = Math.abs((enemy.x + a.dx) - player.x) + Math.abs((enemy.y + a.dy) - player.y);
+                    let distB = Math.abs((enemy.x + b.dx) - player.x) + Math.abs((enemy.y + b.dy) - player.y);
+                    return distA - distB;
+                });
+
+                let currentDirSafe = safeMoves.find(m => m.dx === enemy.dx && m.dy === enemy.dy);
+                
+                // If current path is blocked OR 10% chance to try a "cutoff" turn
+                if (!currentDirSafe || Math.random() < 0.1) {
+                    let choice = safeMoves[0];
+                    enemy.dx = choice.dx;
+                    enemy.dy = choice.dy;
+                }
+            }
+        }
+
+        function gameLoop() {
+            if (gameOver) return;
+
+            updateAI();
+            const pCrashed = player.update();
+            const eCrashed = enemy.update();
+
+            ctx.clearRect(0, 0, SIZE, SIZE);
+            drawWorld();
+            player.draw();
+            enemy.draw();
+
+            if (pCrashed || eCrashed) {
+                gameOver = true;
+                if (pCrashed && eCrashed) status.innerText = "COLLISION: NEITHER SURVIVED";
+                else if (pCrashed) status.innerText = "DEREZZED: THE PROGRAM TRICKED YOU";
+                else status.innerText = "VICTORY: PROGRAM TERMINATED";
+                status.style.color = "#fff";
+            } else {
+                setTimeout(gameLoop, 80);
+            }
+        }
+
+        window.addEventListener('keydown', e => {
+            if (e.key === 'ArrowUp' && player.dy === 0) { player.dx = 0; player.dy = -1; }
+            else if (e.key === 'ArrowDown' && player.dy === 0) { player.dx = 0; player.dy = 1; }
+            else if (e.key === 'ArrowLeft' && player.dx === 0) { player.dx = -1; player.dy = 0; }
+            else if (e.key === 'ArrowRight' && player.dx === 0) { player.dx = 1; player.dy = 0; }
+            else if (e.code === 'Space' && gameOver) location.reload();
+        });
+
+        initGrid();
+        status.innerText = "GRID ACTIVE: ELIMINATE THE OPPONENT";
+        gameLoop();
+    </script>
+</body>
+</html>
