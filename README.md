@@ -5,6 +5,7 @@ Licences & Use:
 You can use, and replicate any part of this game. No charge will be granted upon copy.
 
 CONTROLS:
+
 ^ = Up
 > = Right
 v = Down
