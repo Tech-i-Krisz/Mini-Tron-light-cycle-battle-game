@@ -9,3 +9,4 @@ CONTROLS:
 '>' = Right
 'v' = Down
 '<' = Left
+'SPACE' = Restart
